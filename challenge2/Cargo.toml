@@ -1,0 +1,6 @@
+[package]
+name = "challenge2"
+version = "0.1.0"
+authors = ["ocrickard"]
+
+[dependencies]
