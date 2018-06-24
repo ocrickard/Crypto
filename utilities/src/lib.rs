@@ -14,7 +14,7 @@ pub trait Xorable {
   fn xor_sequential(&self, sequence: &[u8]) -> Self;
 }
 
-mod xor {
+pub mod xor {
   pub fn xor_buffer(buffer: &[u8], rhs: &u8) -> Vec<u8> {
     buffer.iter().map(|c| c ^ rhs).collect()
   }
@@ -33,7 +33,7 @@ mod xor {
   }
 }
 
-mod hex {
+pub mod hex {
   use Encodable;
   use StringConstructible;
   use Xorable;
@@ -73,7 +73,7 @@ mod hex {
   }
 
   // 0123456789abcdef
-  static HEX_CONVERSION_TABLE: &'static [u8] = &[48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 97, 98, 99, 100, 101, 102];
+  static HEX_CONVERSION_TABLE: &'static [u8; 16] = b"0123456789abcdef";
 
   // Take a hex-encoded utf8 byte and convert to a binary byte.
   fn decode_hex_byte(byte: &u8) -> u8 {
@@ -114,7 +114,7 @@ mod hex {
   }
 }
 
-mod b64 {
+pub mod b64 {
   use Encodable;
   use StringConstructible;
   use Xorable;
@@ -154,8 +154,8 @@ mod b64 {
   }
 
   // ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/
-  static B64_CONVERSION_TABLE: &'static [u8] = &[65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 43, 47];
-  
+  static B64_CONVERSION_TABLE: &'static [u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
   // Take a utf8 base64 representation and convert to its binary value.
   fn decode_b64_byte(byte: &u8) -> u8 {
     match B64_CONVERSION_TABLE.iter().position(|&s| s == *byte) {
@@ -180,14 +180,27 @@ mod b64 {
       // our input bytes into groups of 3 8-bit bytes. From these 24 bits we can
       // create 4 6-bit Base-64 values.
 
-      // The first byte is the first 6 bits from c0.
-      output.push(encode_b64_byte(&(c[0] >> 2)));
-      // The second byte is the last 2 bits from c0, plus the first 4 bits of c1.
-      output.push(encode_b64_byte(&(((c[0] & 0b11) << 4) | (c[1] >> 4))));
-      // The third byte is the last 4 bits of c1, plus the first 2 bits of c2.
-      output.push(encode_b64_byte(&(((c[1] & 0b1111) << 2) | (c[2] >> 6))));
-      // The last byte is the last 6 bits of c2, and that's it!
-      output.push(encode_b64_byte(&(c[2] & 0b111111)));
+      match c {
+        [x] => {
+          output.push(encode_b64_byte(&(x >> 2)));
+          output.push(encode_b64_byte(&((x & 0b11) << 4)));
+          output.push(61); // =
+          output.push(61); // =
+        },
+        [x, y] => {
+          output.push(encode_b64_byte(&(x >> 2)));
+          output.push(encode_b64_byte(&(((x & 0b11) << 4) | (y >> 4))));
+          output.push(encode_b64_byte(&((y & 0b1111) << 2)));
+          output.push(61); // =
+        },
+        [x, y, z] => {
+          output.push(encode_b64_byte(&(x >> 2)));
+          output.push(encode_b64_byte(&(((x & 0b11) << 4) | (y >> 4))));
+          output.push(encode_b64_byte(&(((y & 0b1111) << 2) | (z >> 6))));
+          output.push(encode_b64_byte(&(z & 0b111111)));
+        },
+        _ => {}
+      }
     }
     output
   }
@@ -199,50 +212,56 @@ mod b64 {
       // Each b64 value encompasses 6 bits. Thus a group of 4 b64-encoded chars
       // maps to three decoded values.
 
-      // For the first one, we want the all of the first b64 byte, plus 2 bits of the second.
-      output.push((decode_b64_byte(&c[0]) << 2) | (decode_b64_byte(&c[1]) >> 4));
-      // We next take the last 4 bits of the second b64 value, and then add the first 4 bits of the third.
-      output.push(((decode_b64_byte(&c[1]) & 0b1111) << 4) | (decode_b64_byte(&c[2]) >> 2));
-      // Finally, we need the last 2 bits of the third b64 value, and all of the fourth.
-      output.push(((decode_b64_byte(&c[2]) & 0b11) << 6) | decode_b64_byte(&c[3]));
+      match c {
+        [x, y, 61, 61] => {
+          output.push((decode_b64_byte(&x) << 2) | (decode_b64_byte(&y) >> 4));
+        },
+        [x, y, z, 61] => {
+          output.push((decode_b64_byte(&x) << 2) | (decode_b64_byte(&y) >> 4));
+          output.push(((decode_b64_byte(&y) & 0b1111) << 4) | (decode_b64_byte(&z) >> 2));
+        }
+        _ => {
+          output.push((decode_b64_byte(&c[0]) << 2) | (decode_b64_byte(&c[1]) >> 4));
+          output.push(((decode_b64_byte(&c[1]) & 0b1111) << 4) | (decode_b64_byte(&c[2]) >> 2));
+          output.push(((decode_b64_byte(&c[2]) & 0b11) << 6) | decode_b64_byte(&c[3]));
+        }
+      }
     }
     output
   }
 }
 
-mod strings {
+pub mod strings {
   use std::collections::HashMap;
-  
-  fn normality(frequency_map: &HashMap<u8, u8>) -> f32 {
-    let mut sorted_vec: Vec<(&u8, &u8)> = frequency_map.iter().collect();
-    sorted_vec.sort_by(|lhs, rhs| rhs.1.cmp(lhs.1));
-    let sorted_vec = sorted_vec.iter().map(|(val, _)| val);
 
-    let expected = "etaoinshrdlcumwfgypbvkjxqz".as_bytes();
+  pub fn normality(frequency_map: &HashMap<u8, usize>) -> f32 {
+    let mut sorted_vec: Vec<(&u8, &usize)> = frequency_map.iter().collect();
+    sorted_vec.sort_by(|lhs, rhs| rhs.1.cmp(lhs.1));
+    let sorted_vec: Vec<u8> = sorted_vec.iter().map(|(val, _)| **val).collect();
+
+    let expected = b"et aoinshrdlcumwfgypbvkjxqz";
 
     let mut sum_similar: f32 = 0.0;
 
-    for (i, actual) in sorted_vec.enumerate() {
-      if let Some(exp_position) = expected.iter().position(|&s| s == **actual) {
+    for (i, actual) in sorted_vec.iter().enumerate() {
+      if let Some(exp_position) = expected.iter().position(|&s| s == *actual) {
         sum_similar += 1.0 - ((exp_position as f32 - (i as f32)).abs() / expected.len() as f32)
       }
     }
     sum_similar / (expected.len() as f32)
   }
 
-  fn frequency(input: &str) -> HashMap<u8, u8> {
+  pub fn frequency(input: &str) -> HashMap<u8, usize> {
     let input = input.to_lowercase();
-    let mut map: HashMap<u8, u8> = HashMap::new();
+    let mut map: HashMap<u8, usize> = HashMap::new();
     for byte in input.as_bytes().iter() {
-      if *byte != 32 { 
-        // skip spaces
-        *map.entry(*byte).or_insert(0) += 1;
-      }
+      // skip spaces
+      *map.entry(*byte).or_insert(0) += 1;
     }
     map
   }
 
-  fn hamming_distance(lhs: &[u8], rhs: &[u8]) -> u32 {
+  pub fn hamming_distance(lhs: &[u8], rhs: &[u8]) -> u32 {
     let mut dist = 0;
     for (l, r) in lhs.iter().zip(rhs.iter()) {
       // By taking the xor of l and r, we get the bits set to 1 that were different
@@ -259,7 +278,7 @@ mod strings {
     }
     // Not mentioned in the problem spec, but we consider differences of length
     // to be different for every bit, not just 1's. This is an impl detail.
-    (dist + ((lhs.len() - rhs.len()) as i32).abs() * 8) as u32
+    (dist + (lhs.len() as i32 - rhs.len() as i32).abs() * 8) as u32
   }
 }
 
@@ -271,9 +290,66 @@ mod tests {
   use StringConstructible;
   use Xorable;
   use std;
+  use strings;
     #[test]
     fn hex_buffer_converts_string() {
       let buf = HexBuffer { raw_bytes: "hey! my name is Oliver, what's yours?".as_bytes().to_vec() };
-      println!("{:?}", std::str::from_utf8(&buf.encode_to_utf8()));
+      assert_eq!(std::str::from_utf8(&buf.encode_to_utf8()).unwrap(), "68657921206d79206e616d65206973204f6c697665722c2077686174277320796f7572733f");
+    }
+
+    #[test]
+    fn hex_buffer_converts_string_and_back() {
+      let string = "hey! my name is Oliver, what's yours?";
+      let raw_bytes = string.as_bytes().to_vec();
+      let buf = HexBuffer { raw_bytes };
+      let encoded = buf.encode_to_utf8();
+      let new_buf = HexBuffer::from_encoded_utf8_buffer(&encoded);
+      let decoded_bin = new_buf.decode_to_bin();
+      let decoded = std::str::from_utf8(&decoded_bin).unwrap();
+      assert_eq!(decoded, string);
+    }
+
+    #[test]
+    fn b64_buffer_converts_string() {
+      let buf = B64Buffer { raw_bytes: "hey! my name is Oliver, what's yours?".as_bytes().to_vec() };
+      assert_eq!(std::str::from_utf8(&buf.encode_to_utf8()).unwrap(), "aGV5ISBteSBuYW1lIGlzIE9saXZlciwgd2hhdCdzIHlvdXJzPw==");
+    }
+
+    #[test]
+    fn b64_buffer_converts_string_and_back() {
+      let string = "hey! my name is Oliver, what's yours?";
+      let raw_bytes = string.as_bytes().to_vec();
+      let buf = B64Buffer { raw_bytes };
+      let encoded = buf.encode_to_utf8();
+      let new_buf = B64Buffer::from_encoded_utf8_buffer(&encoded);
+      let decoded_bin = new_buf.decode_to_bin();
+      let decoded = std::str::from_utf8(&decoded_bin).unwrap();
+      assert_eq!(decoded, string);
+    }
+
+    #[test]
+    fn hamming_distance_wokka_wokka() {
+      assert_eq!(strings::hamming_distance(b"this is a test", b"wokka wokka!!!"), 37);
+    }
+
+    #[test]
+    fn frequency_count_single_char_works() {
+      assert_eq!(*strings::frequency("eeeeeeeeee").get(&101).unwrap(), 10);
+    }
+
+    #[test]
+    fn frequency_count_multiple_char_works() {
+      let freq = strings::frequency("eeeeeeeeeeaaaaa");
+      assert_eq!(*freq.get(&101).unwrap(), 10);
+      assert_eq!(*freq.get(&97).unwrap(), 5);
+    }
+
+    #[test]
+    fn single_xor_buffer() {
+      let buf = HexBuffer::from_encoded_utf8_buffer(b"1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736");
+      let xored = buf.xor_value(&88);
+      let decoded_bin = xored.decode_to_bin();
+      let decoded_string = std::str::from_utf8(&decoded_bin).unwrap();
+      assert_eq!(decoded_string, "Cooking MC\'s like a pound of bacon");
     }
 }

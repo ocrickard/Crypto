@@ -4,14 +4,14 @@ use std::collections::HashMap;
 fn normality(frequency_map: &HashMap<u8, u8>) -> f32 {
   let mut sorted_vec: Vec<(&u8, &u8)> = frequency_map.iter().collect();
   sorted_vec.sort_by(|lhs, rhs| rhs.1.cmp(lhs.1));
-  let sorted_vec = sorted_vec.iter().map(|(val, _)| val);
+  let sorted_vec: Vec<u8> = sorted_vec.iter().map(|(val, _)| **val).collect();
 
-  let expected = "etaoinshrdlcumwfgypbvkjxqz".as_bytes();
+  let expected = b"et aoinshrdlcumwfgypbvkjxqz";
 
   let mut sum_similar: f32 = 0.0;
 
-  for (i, actual) in sorted_vec.enumerate() {
-    if let Some(exp_position) = expected.iter().position(|&s| s == **actual) {
+  for (i, actual) in sorted_vec.iter().enumerate() {
+    if let Some(exp_position) = expected.iter().position(|&s| s == *actual) {
       sum_similar += 1.0 - ((exp_position as f32 - (i as f32)).abs() / expected.len() as f32)
     }
   }
@@ -22,10 +22,8 @@ fn frequency(input: &str) -> HashMap<u8, u8> {
   let input = input.to_lowercase();
   let mut map: HashMap<u8, u8> = HashMap::new();
   for byte in input.as_bytes().iter() {
-    if *byte != 32 { 
-      // skip spaces
-      *map.entry(*byte).or_insert(0) += 1;
-    }
+    // skip spaces
+    *map.entry(*byte).or_insert(0) += 1;
   }
   map
 }
@@ -76,6 +74,7 @@ fn main() {
     let norm = normality(&freq);
     
     if norm > max {
+      println!("{:?} {} freq: {:?}", utf8, max, freq);
       max = norm;
       index = i;
       utf8_max = utf8.to_string();
