@@ -1,0 +1,6 @@
+[package]
+name = "challenge6"
+version = "0.1.0"
+authors = ["Oliver Rickard <ocrickard@gmail.com>"]
+
+[dependencies]
